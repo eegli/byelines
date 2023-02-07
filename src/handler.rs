@@ -1,11 +1,11 @@
-use copypasta::{ClipboardContext, ClipboardProvider};
+use arboard::Clipboard;
 use regex::Regex;
 
 const REPLACEMENT_PATTERN: &str = r"\r\n|\n|\r";
 
 pub struct ClipboardString {
     cached: Option<String>,
-    ctx: ClipboardContext,
+    cp: Clipboard,
     re: Regex,
 }
 
@@ -13,7 +13,7 @@ impl ClipboardString {
     pub fn new() -> Self {
         let mut this = Self {
             cached: None,
-            ctx: ClipboardContext::new().unwrap(),
+            cp: Clipboard::new().unwrap(),
             re: Regex::new(&REPLACEMENT_PATTERN).unwrap(),
         };
         this.cached = this.get_content();
@@ -25,7 +25,8 @@ impl ClipboardString {
     }
 
     pub fn get_content(&mut self) -> Option<String> {
-        let content = self.ctx.get_contents().ok()?;
+        let content = self.cp.get_text().ok()?;
+        println!("{:?}", Some(&content) == self.cached.as_ref());
         match Some(&content) == self.cached.as_ref() {
             true => None,
             false => {
@@ -36,6 +37,6 @@ impl ClipboardString {
     }
 
     pub fn set_content(&mut self, content: String) -> Option<()> {
-        self.ctx.set_contents(content).ok()
+        self.cp.set_text(content).ok()
     }
 }
