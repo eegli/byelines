@@ -1,26 +1,28 @@
-use clipboard::{ClipboardContext, ClipboardProvider};
+#![allow(unused)]
+
 use std::error::Error;
 use std::{thread, time};
 
-mod content;
+mod cp_handler;
 mod logger;
+
+use cp_handler::ClipboardString;
 use logger::log;
 
 fn main() -> Result<(), Box<dyn Error>> {
     logger::init();
-    let mut ctx = ClipboardContext::new()?;
-    let mut cached: Option<String> = None;
-    let ten_millis = time::Duration::from_millis(1000);
+    let mut clipboard = ClipboardString::new();
+    let one_sec = time::Duration::from_millis(2000);
 
     loop {
-        thread::sleep(ten_millis);
-        if let Ok(context) = ctx.get_contents() {
-            if Some(&context) != cached.as_ref() {
-                let text: String = context.lines().fold("".to_string(), |acc, f| acc + f);
-                log::info!("Converted \"{:.20}\"", text);
-                cached = Some(context);
-                ctx.set_contents(text)?;
-            }
+        thread::sleep(one_sec);
+        if let Some(content) = clipboard.get_content() {
+            let formatted = clipboard.strip_newlines(&content);
+            log::info!("{}", formatted);
+            match clipboard.set_content(formatted) {
+                Some(_) => log::info!("Clipboard content updated"),
+                None => log::info!("Clipboard content not updated"),
+            };
         }
     }
 }

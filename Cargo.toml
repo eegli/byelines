@@ -1,5 +1,5 @@
 [package]
-name = "linebreaker"
+name = "byelines"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.69"
-clipboard = "0.5.0"
 log = "0.4.17"
 simple_logger = "4.0.0"
+regex = "1"
+copypasta = "0.8.1"
