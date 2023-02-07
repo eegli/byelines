@@ -4,13 +4,13 @@ use std::{thread, time::Duration};
 
 const REPLACEMENT_PATTERN: &str = r"\r\n|\n|\r";
 
-pub struct Clipboard {
+pub struct ClipboardHandler {
     cached: Option<String>,
     clipboard: arboard::Clipboard,
     re: Regex,
 }
 
-impl Clipboard {
+impl ClipboardHandler {
     pub fn new() -> Self {
         let mut this = Self {
             cached: None,
@@ -21,7 +21,8 @@ impl Clipboard {
         this
     }
 
-    pub fn start(&mut self, ms_intervall: i16) {
+    /// Start the clipboard handler with a polling intervall in milliseconds
+    pub fn launch(&mut self, ms_intervall: i16) {
         let i = Duration::from_millis(ms_intervall as u64);
         loop {
             thread::sleep(i);
@@ -62,5 +63,14 @@ impl Clipboard {
 
     fn set_content(&mut self, content: String) -> Option<()> {
         self.clipboard.set_text(content).ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        let result = 2 + 2;
+        assert_eq!(result, 4);
     }
 }
