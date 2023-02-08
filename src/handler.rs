@@ -17,16 +17,20 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-enum ClipboardChangeResult {
-    NoChange(String),
-    Updated,
+enum ClipboardOpResult {
+    Updated(String),
+    CacheHit,
+    NoContent,
+    Content(String),
+    Error(ClipboardError),
 }
 
-#[derive(Debug, PartialEq)]
-enum ClipboardContentRequest {
-    CacheHit,
-    RequestError(String),
-    Content(String),
+#[derive(Debug, PartialEq, Error)]
+enum ClipboardError {
+    #[error("Failed to read from clipboard: {0}")]
+    ReadError(String),
+    #[error("Failed to write to clipboard: {0}")]
+    WriteError(String),
 }
 
 impl<'a, T> Handler<'a, T>
@@ -47,30 +51,25 @@ where
         loop {
             thread::sleep(i);
             match self.handle_change() {
-                ClipboardChangeResult::Updated => {
-                    println!("Updated clipboard");
+                ClipboardOpResult::Updated(content) => {
+                    println!("Updated clipboard, {content:20.}");
                 }
                 _ => {}
             };
         }
     }
 
-    fn handle_change(&mut self) -> ClipboardChangeResult {
-        use ClipboardChangeResult::*;
-        use ClipboardContentRequest::*;
+    fn handle_change(&mut self) -> ClipboardOpResult {
+        use ClipboardOpResult::*;
         match self.get_content() {
             Content(content) => {
                 let formatted = self.strip_newlines(&content);
                 if formatted == content {
-                    return NoChange(format!("Skipping update (no newlines found)"));
+                    return NoContent;
                 }
-                match self.set_content(&formatted) {
-                    Ok(_) => Updated,
-                    Err(e) => NoChange(format!("Error writing to clipboard: {e}")),
-                }
+                self.set_content(&formatted)
             }
-            RequestError(e) => NoChange(format!("Error reading from clipboard: {e}")),
-            CacheHit => NoChange(format!("Reading clipboard value from cache")),
+            status => status,
         }
     }
 
@@ -78,24 +77,29 @@ where
         self.re.replace_all(content, " ").trim().to_string()
     }
 
-    fn get_content(&mut self) -> ClipboardContentRequest {
+    fn get_content(&mut self) -> ClipboardOpResult {
+        use ClipboardOpResult::*;
         let content = self.clipboard.get_text();
         if let Err(err) = content {
             let err = err.to_string();
-            return ClipboardContentRequest::RequestError(err);
+            return Error(ClipboardError::ReadError(err));
         }
         let content = content.unwrap();
         match Some(&content) == self.cached.as_ref() {
-            true => ClipboardContentRequest::CacheHit,
+            true => ClipboardOpResult::CacheHit,
             false => {
                 self.cached = Some(content.clone());
-                ClipboardContentRequest::Content(content)
+                ClipboardOpResult::Content(content)
             }
         }
     }
 
-    fn set_content(&mut self, content: &str) -> Result<()> {
-        self.clipboard.set_text(content)
+    fn set_content(&mut self, content: &str) -> ClipboardOpResult {
+        use ClipboardOpResult::*;
+        match self.clipboard.set_text(content) {
+            Ok(_) => Updated(content.to_string()),
+            Err(err) => Error(ClipboardError::WriteError(err.to_string())),
+        }
     }
 }
 
@@ -111,8 +115,8 @@ mod test_clipboard_rw_success {
         fn get_text(&mut self) -> Result<String> {
             Ok(self.0.clone())
         }
-        fn set_text(&mut self, text: &str) -> Result<()> {
-            self.0 = text.to_string();
+        // Preserve the faked clipboard content, don't overwrite it
+        fn set_text(&mut self, _text: &str) -> Result<()> {
             Ok(())
         }
     }
@@ -126,8 +130,7 @@ mod test_clipboard_rw_success {
 
         let res = handler.handle_change();
 
-        assert_eq!(res, ClipboardChangeResult::Updated);
-        assert_eq!(mock_clipboard.0, "test test".to_string());
+        assert_eq!(res, ClipboardOpResult::Updated("test test".to_string()));
     }
     #[test]
     fn skips_updating_on_cache_hit() {
@@ -139,8 +142,7 @@ mod test_clipboard_rw_success {
         let _ = handler.handle_change();
         let res = handler.handle_change();
 
-        assert!(matches!(res, ClipboardChangeResult::NoChange(_)));
-        assert_eq!(mock_clipboard.0, "test test".to_string());
+        assert_eq!(res, ClipboardOpResult::CacheHit);
     }
     #[test]
     fn skips_update_on_no_newlines() {
@@ -151,8 +153,7 @@ mod test_clipboard_rw_success {
 
         let res = handler.handle_change();
 
-        println!("{:?}", res);
-        assert!(matches!(res, ClipboardChangeResult::NoChange(_)));
+        assert_eq!(res, ClipboardOpResult::NoContent);
         assert_eq!(mock_clipboard.0, "test test".to_string());
     }
 }
@@ -161,6 +162,7 @@ mod test_clipboard_rw_failure {
 
     use super::*;
     use anyhow::anyhow;
+    use ClipboardOpResult::*;
 
     #[derive(Default)]
     struct MockClipboard(Option<String>);
@@ -186,12 +188,7 @@ mod test_clipboard_rw_failure {
 
         let res = handler.handle_change();
 
-        assert_eq!(
-            res,
-            ClipboardChangeResult::NoChange(
-                "Error reading from clipboard: CP_READ_ERROR".to_string()
-            )
-        );
+        assert!(matches!(res, Error(ClipboardError::ReadError(_))));
     }
 
     #[test]
@@ -203,11 +200,6 @@ mod test_clipboard_rw_failure {
 
         let res = handler.handle_change();
 
-        assert_eq!(
-            res,
-            ClipboardChangeResult::NoChange(
-                "Error writing to clipboard: CP_WRITE_ERROR".to_string()
-            )
-        );
+        assert!(matches!(res, Error(ClipboardError::WriteError(_))));
     }
 }
