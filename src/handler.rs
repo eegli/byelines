@@ -1,20 +1,27 @@
 use regex::Regex;
-use std::io;
 use std::{thread, time::Duration};
 
 const REPLACEMENT_PATTERN: &str = r"\r\n|\n|\r";
 
-pub struct ClipboardHandler {
+use crate::clipboard::ClipboardIO;
+
+pub struct Handler<'a, T>
+where
+    T: ClipboardIO + 'a,
+{
     cached: Option<String>,
-    clipboard: arboard::Clipboard,
+    clipboard: &'a mut T,
     re: Regex,
 }
 
-impl ClipboardHandler {
-    pub fn new() -> Self {
+impl<'a, T> Handler<'a, T>
+where
+    T: ClipboardIO + 'a,
+{
+    pub fn new(clipboard: &'a mut T) -> Self {
         let mut this = Self {
             cached: None,
-            clipboard: arboard::Clipboard::new().unwrap(),
+            clipboard,
             re: Regex::new(&REPLACEMENT_PATTERN).unwrap(),
         };
         this.cached = this.get_content();
@@ -37,7 +44,7 @@ impl ClipboardHandler {
                 log::info!("CP update skipped");
                 return;
             }
-            match self.set_content(formatted) {
+            match self.set_content(&formatted) {
                 Some(_) => {
                     log::info!("CP updated: {:.20}", content);
                 }
@@ -61,16 +68,38 @@ impl ClipboardHandler {
         }
     }
 
-    fn set_content(&mut self, content: String) -> Option<()> {
+    fn set_content(&mut self, content: &str) -> Option<()> {
         self.clipboard.set_text(content).ok()
     }
 }
 
 #[cfg(test)]
 mod tests {
+
+    use super::*;
+    use anyhow::Result;
+
+    #[derive(Default, Debug)]
+    struct MockClipboard(String);
+
+    impl ClipboardIO for MockClipboard {
+        fn get_text(&mut self) -> Result<String> {
+            Ok(self.0.clone())
+        }
+        fn set_text(&mut self, text: &str) -> Result<()> {
+            self.0 = text.to_string();
+            Ok(())
+        }
+    }
     #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
+    fn handles_cipboard_io_ops() {
+        const INPUT_STR: &str = "\ntest\r\n";
+        const OUTPUT_STR: &str = " test        ";
+        let mut mock_clipboard = MockClipboard::default();
+        mock_clipboard.0 = INPUT_STR.to_string();
+
+        let mut handler = Handler::new(&mut mock_clipboard);
+        handler.handle_change();
+        assert_eq!(mock_clipboard.get_text().unwrap(), OUTPUT_STR);
     }
 }

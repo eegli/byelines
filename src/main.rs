@@ -1,11 +1,13 @@
-#![allow(unused)]
+// #![allow(unused)]
 
+mod clipboard;
 mod handler;
 
-use handler::ClipboardHandler;
+use handler::Handler;
 use simple_logger::SimpleLogger;
 
 fn main() -> () {
     SimpleLogger::new().init().unwrap();
-    ClipboardHandler::new().launch(1000);
+    let mut clipboard = arboard::Clipboard::new().unwrap();
+    Handler::new(&mut clipboard).launch(1000);
 }
