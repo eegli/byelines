@@ -1,6 +1,5 @@
 use regex::Regex;
 use std::{thread, time::Duration};
-use thiserror::Error;
 
 const REPLACEMENT_PATTERN: &str = r"\r\n|\n|\r";
 
@@ -24,11 +23,9 @@ enum ClipboardOpResult {
     Error(ClipboardError),
 }
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq)]
 enum ClipboardError {
-    #[error("Failed to read from clipboard: {0}")]
     ReadError(String),
-    #[error("Failed to write to clipboard: {0}")]
     WriteError(String),
 }
 
@@ -189,6 +186,8 @@ mod test_clipboard_rw_failure {
 
         let res = handler.handle_change();
 
+        assert!(matches!(res, Error(ClipboardError::ReadError(_))));
+        // Assert that the right error message is returned
         assert!(matches!(res, Error(ClipboardError::ReadError(_))));
     }
 
