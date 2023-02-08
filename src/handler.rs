@@ -1,5 +1,7 @@
+use anyhow::Result;
 use regex::Regex;
 use std::{thread, time::Duration};
+use thiserror::Error;
 
 const REPLACEMENT_PATTERN: &str = r"\r\n|\n|\r";
 
@@ -40,11 +42,16 @@ where
     }
 
     /// Start the clipboard handler with a polling intervall in milliseconds
-    pub fn launch(&mut self, ms_intervall: i16) {
+    pub fn launch(&mut self, ms_intervall: i16) -> () {
         let i = Duration::from_millis(ms_intervall as u64);
         loop {
             thread::sleep(i);
-            self.handle_change();
+            match self.handle_change() {
+                ClipboardChangeResult::Updated => {
+                    println!("Updated clipboard");
+                }
+                _ => {}
+            };
         }
     }
 
@@ -58,12 +65,11 @@ where
                     return NoChange(format!("Skipping update (no newlines found)"));
                 }
                 match self.set_content(&formatted) {
-                    Some(_) => Updated,
-                    // The underlying clipboard crate does not expose the error type
-                    None => NoChange(format!("Error writing to clipboard")),
+                    Ok(_) => Updated,
+                    Err(e) => NoChange(format!("Error writing to clipboard: {e}")),
                 }
             }
-            RequestError(err) => NoChange(format!("Error reading from clipboard: {}", err)),
+            RequestError(e) => NoChange(format!("Error reading from clipboard: {e}")),
             CacheHit => NoChange(format!("Reading clipboard value from cache")),
         }
     }
@@ -88,8 +94,8 @@ where
         }
     }
 
-    fn set_content(&mut self, content: &str) -> Option<()> {
-        self.clipboard.set_text(content).ok()
+    fn set_content(&mut self, content: &str) -> Result<()> {
+        self.clipboard.set_text(content)
     }
 }
 
@@ -97,7 +103,6 @@ where
 mod test_clipboard_rw_success {
 
     use super::*;
-    use anyhow::Result;
 
     #[derive(Default)]
     struct MockClipboard(String);
@@ -155,7 +160,7 @@ mod test_clipboard_rw_success {
 mod test_clipboard_rw_failure {
 
     use super::*;
-    use anyhow::Result;
+    use anyhow::anyhow;
 
     #[derive(Default)]
     struct MockClipboard(Option<String>);
@@ -164,11 +169,11 @@ mod test_clipboard_rw_failure {
         fn get_text(&mut self) -> Result<String> {
             match self.0 {
                 Some(ref text) => Ok(text.clone()),
-                None => anyhow::bail!("CP_READ_ERROR"),
+                None => Err(anyhow!("CP_READ_ERROR")),
             }
         }
         fn set_text(&mut self, _text: &str) -> Result<()> {
-            anyhow::bail!("CP_WRITE_ERROR")
+            Err(anyhow!("CP_WRITE_ERROR"))
         }
     }
 
@@ -200,7 +205,9 @@ mod test_clipboard_rw_failure {
 
         assert_eq!(
             res,
-            ClipboardChangeResult::NoChange("Error writing to clipboard".to_string())
+            ClipboardChangeResult::NoChange(
+                "Error writing to clipboard: CP_WRITE_ERROR".to_string()
+            )
         );
     }
 }

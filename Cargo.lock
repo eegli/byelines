@@ -82,6 +82,7 @@ dependencies = [
  "mockall",
  "regex",
  "simple_logger",
+ "thiserror",
 ]
 
 [[package]]
