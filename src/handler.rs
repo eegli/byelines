@@ -55,20 +55,20 @@ where
             Content(content) => {
                 let formatted = self.strip_newlines(&content);
                 if formatted == content {
-                    return NoChange(format!("Skipping update, no newlines found"));
+                    return NoChange(format!("Skipping update (no newlines found)"));
                 }
                 match self.set_content(&formatted) {
                     Some(_) => Updated,
-                    None => NoChange(format!("Error updating clipboard content")),
+                    // The underlying clipboard crate does not expose the error type
+                    None => NoChange(format!("Error writing to clipboard")),
                 }
             }
-            RequestError(err) => NoChange(format!("Error reading clipboard content: {}", err)),
+            RequestError(err) => NoChange(format!("Error reading from clipboard: {}", err)),
             CacheHit => NoChange(format!("Reading clipboard value from cache")),
         }
     }
 
     fn strip_newlines(&self, content: &str) -> String {
-        println!("strip_newlines({})", content);
         self.re.replace_all(content, " ").trim().to_string()
     }
 
@@ -94,7 +94,65 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+mod test_clipboard_rw_success {
+
+    use super::*;
+    use anyhow::Result;
+
+    #[derive(Default)]
+    struct MockClipboard(String);
+
+    impl ClipboardIO for MockClipboard {
+        fn get_text(&mut self) -> Result<String> {
+            Ok(self.0.clone())
+        }
+        fn set_text(&mut self, text: &str) -> Result<()> {
+            self.0 = text.to_string();
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn strips_clipboard_content() {
+        let mut mock_clipboard = MockClipboard::default();
+        mock_clipboard.0 = "\ntest\r\ntest".to_string();
+
+        let mut handler = Handler::new(&mut mock_clipboard);
+
+        let res = handler.handle_change();
+
+        assert_eq!(res, ClipboardChangeResult::Updated);
+        assert_eq!(mock_clipboard.0, "test test".to_string());
+    }
+    #[test]
+    fn skips_updating_on_cache_hit() {
+        let mut mock_clipboard = MockClipboard::default();
+        mock_clipboard.0 = "\ntest\r\ntest".to_string();
+
+        let mut handler = Handler::new(&mut mock_clipboard);
+
+        let _ = handler.handle_change();
+        let res = handler.handle_change();
+
+        assert!(matches!(res, ClipboardChangeResult::NoChange(_)));
+        assert_eq!(mock_clipboard.0, "test test".to_string());
+    }
+    #[test]
+    fn skips_update_on_no_newlines() {
+        let mut mock_clipboard = MockClipboard::default();
+        mock_clipboard.0 = "test test".to_string();
+
+        let mut handler = Handler::new(&mut mock_clipboard);
+
+        let res = handler.handle_change();
+
+        println!("{:?}", res);
+        assert!(matches!(res, ClipboardChangeResult::NoChange(_)));
+        assert_eq!(mock_clipboard.0, "test test".to_string());
+    }
+}
+
+mod test_clipboard_rw_failure {
 
     use super::*;
     use anyhow::Result;
@@ -105,56 +163,17 @@ mod tests {
     impl ClipboardIO for MockClipboard {
         fn get_text(&mut self) -> Result<String> {
             match self.0 {
-                Some(ref s) => Ok(s.clone()),
-                None => anyhow::bail!("No content"),
+                Some(ref text) => Ok(text.clone()),
+                None => anyhow::bail!("CP_READ_ERROR"),
             }
         }
-        fn set_text(&mut self, text: &str) -> Result<()> {
-            self.0 = Some(text.to_string());
-            Ok(())
+        fn set_text(&mut self, _text: &str) -> Result<()> {
+            anyhow::bail!("CP_WRITE_ERROR")
         }
     }
 
     #[test]
-    fn strips_clipboard_content() {
-        let mut mock_clipboard = MockClipboard::default();
-        mock_clipboard.0 = Some("\ntest\r\ntest".to_string());
-
-        let mut handler = Handler::new(&mut mock_clipboard);
-
-        let res = handler.handle_change();
-
-        assert_eq!(res, ClipboardChangeResult::Updated);
-        assert_eq!(mock_clipboard.0, Some("test test".to_string()));
-    }
-    #[test]
-    fn skips_updating_on_cache_hit() {
-        let mut mock_clipboard = MockClipboard::default();
-        mock_clipboard.0 = Some("\ntest\r\ntest".to_string());
-
-        let mut handler = Handler::new(&mut mock_clipboard);
-
-        let _ = handler.handle_change();
-        let res = handler.handle_change();
-
-        assert!(matches!(res, ClipboardChangeResult::NoChange(_)));
-        assert_eq!(mock_clipboard.0, Some("test test".to_string()));
-    }
-    #[test]
-    fn skips_update_on_no_newlines() {
-        let mut mock_clipboard = MockClipboard::default();
-        mock_clipboard.0 = Some("test test".to_string());
-
-        let mut handler = Handler::new(&mut mock_clipboard);
-
-        let res = handler.handle_change();
-
-        println!("{:?}", res);
-        assert!(matches!(res, ClipboardChangeResult::NoChange(_)));
-        assert_eq!(mock_clipboard.0, Some("test test".to_string()));
-    }
-    #[test]
-    fn skips_update_on_no_cp_content() {
+    fn skips_update_on_failed_cp_read() {
         let mut mock_clipboard = MockClipboard::default();
         mock_clipboard.0 = None;
 
@@ -162,7 +181,26 @@ mod tests {
 
         let res = handler.handle_change();
 
-        assert!(matches!(res, ClipboardChangeResult::NoChange(_)));
-        assert_eq!(mock_clipboard.0, None);
+        assert_eq!(
+            res,
+            ClipboardChangeResult::NoChange(
+                "Error reading from clipboard: CP_READ_ERROR".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn skips_update_on_failed_cp_write() {
+        let mut mock_clipboard = MockClipboard::default();
+        mock_clipboard.0 = Some("test\n".to_string());
+
+        let mut handler = Handler::new(&mut mock_clipboard);
+
+        let res = handler.handle_change();
+
+        assert_eq!(
+            res,
+            ClipboardChangeResult::NoChange("Error writing to clipboard".to_string())
+        );
     }
 }
