@@ -158,6 +158,7 @@ mod test_clipboard_rw_success {
     }
 }
 
+#[cfg(test)]
 mod test_clipboard_rw_failure {
 
     use super::*;
