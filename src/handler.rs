@@ -19,13 +19,11 @@ where
     T: ClipboardIO + 'a,
 {
     pub fn new(clipboard: &'a mut T) -> Self {
-        let mut this = Self {
+        Self {
             cached: None,
             clipboard,
             re: Regex::new(&REPLACEMENT_PATTERN).unwrap(),
-        };
-        this.cached = this.get_content();
-        this
+        }
     }
 
     /// Start the clipboard handler with a polling intervall in milliseconds
@@ -40,6 +38,7 @@ where
     fn handle_change(&mut self) -> () {
         if let Some(content) = self.get_content() {
             let formatted = self.strip_newlines(&content);
+            println!("formatted: {}", formatted);
             if formatted == content {
                 log::info!("CP update skipped");
                 return;
@@ -50,11 +49,14 @@ where
                 }
                 None => log::error!("Error updating clipboard"),
             };
+        } else {
+            println!("No change");
         };
     }
 
     fn strip_newlines(&self, content: &str) -> String {
-        self.re.replace_all(content, " ").to_string()
+        println!("strip_newlines({})", content);
+        self.re.replace_all(content, " ").trim().to_string()
     }
 
     fn get_content(&mut self) -> Option<String> {
@@ -79,7 +81,7 @@ mod tests {
     use super::*;
     use anyhow::Result;
 
-    #[derive(Default, Debug)]
+    #[derive(Default)]
     struct MockClipboard(String);
 
     impl ClipboardIO for MockClipboard {
@@ -93,13 +95,14 @@ mod tests {
     }
     #[test]
     fn handles_cipboard_io_ops() {
-        const INPUT_STR: &str = "\ntest\r\n";
-        const OUTPUT_STR: &str = " test        ";
+        const INPUT_STR: &str = "\ntest\r\ntest";
+        const OUTPUT_STR: &str = "test test";
         let mut mock_clipboard = MockClipboard::default();
         mock_clipboard.0 = INPUT_STR.to_string();
 
         let mut handler = Handler::new(&mut mock_clipboard);
+
         handler.handle_change();
-        assert_eq!(mock_clipboard.get_text().unwrap(), OUTPUT_STR);
+        assert_eq!(mock_clipboard.0, OUTPUT_STR);
     }
 }
