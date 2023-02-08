@@ -187,8 +187,6 @@ mod test_clipboard_rw_failure {
         let res = handler.handle_change();
 
         assert!(matches!(res, Error(ClipboardError::ReadError(_))));
-        // Assert that the right error message is returned
-        assert!(matches!(res, Error(ClipboardError::ReadError(_))));
     }
 
     #[test]
