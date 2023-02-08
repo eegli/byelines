@@ -1,4 +1,3 @@
-use anyhow::Result;
 use regex::Regex;
 use std::{thread, time::Duration};
 use thiserror::Error;
@@ -107,6 +106,7 @@ where
 mod test_clipboard_rw_success {
 
     use super::*;
+    use anyhow::Result;
 
     #[derive(Default)]
     struct MockClipboard(String);
@@ -162,7 +162,7 @@ mod test_clipboard_rw_success {
 mod test_clipboard_rw_failure {
 
     use super::*;
-    use anyhow::anyhow;
+    use anyhow::{anyhow, Result};
     use ClipboardOpResult::*;
 
     #[derive(Default)]
