@@ -10,12 +10,12 @@ on:
 
 jobs:
   test:
-    name: Rust project
+    name: unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - name: Run tests
+      - name: run tests
         run: cargo test
