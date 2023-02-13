@@ -7,7 +7,7 @@ use crate::clipboard::ClipboardIO;
 
 pub struct Handler<'a, T>
 where
-    T: ClipboardIO + 'a,
+    T: ClipboardIO,
 {
     cached: Option<String>,
     clipboard: &'a mut T,
@@ -31,41 +31,38 @@ enum ClipboardError {
 
 impl<'a, T> Handler<'a, T>
 where
-    T: ClipboardIO + 'a,
+    T: ClipboardIO,
 {
     pub fn new(clipboard: &'a mut T) -> Self {
         Self {
             cached: None,
             clipboard,
-            re: Regex::new(&REPLACEMENT_PATTERN).unwrap(),
+            re: Regex::new(REPLACEMENT_PATTERN).unwrap(),
         }
     }
 
     /// Start the clipboard handler with a polling intervall in milliseconds
-    pub fn launch(&mut self, ms_intervall: i16) -> () {
+    pub fn launch(&mut self, ms_intervall: i16) {
         let i = Duration::from_millis(ms_intervall as u64);
         loop {
             thread::sleep(i);
-            match self.handle_change() {
-                ClipboardOpResult::Updated(content) => {
-                    println!("Updated clipboard, {content:20.}");
-                }
-                _ => {}
-            };
+            if let ClipboardOpResult::Updated(content) = self.handle_change() {
+                println!("Updated clipboard, {content:.20}");
+            }
         }
     }
 
     fn handle_change(&mut self) -> ClipboardOpResult {
         use ClipboardOpResult::*;
-        match self.get_content() {
-            Content(content) => {
-                let formatted = self.strip_newlines(&content);
-                if formatted == content {
-                    return NoContent;
-                }
-                self.set_content(&formatted)
+        let content_result = self.get_content();
+        if let Content(content) = content_result {
+            let formatted = self.strip_newlines(&content);
+            if formatted == content {
+                return NoContent;
             }
-            status => status,
+            self.set_content(&formatted)
+        } else {
+            content_result
         }
     }
 
